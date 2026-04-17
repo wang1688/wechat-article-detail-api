@@ -25,16 +25,13 @@
 
 # 部署文档
 
-    1. 复制API文件到新服务器
-       需要复制这个文件：
-       Copy
-       ~/.openclaw/workspace/skills/wechat-account-articles/api/wechat_article_api.py
-    2. 安装依赖
+
+    1. 安装依赖
           Copy
           pip3 install urllib3
-    3. 启动服务
+    2. 启动服务
       Copy
-      python3 wechat_article_api.py --port 8080
+      python3 wechat_article_detail_api.py --port 8080
 
 
     
