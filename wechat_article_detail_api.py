@@ -256,21 +256,43 @@ class APIHandler(BaseHTTPRequestHandler):
             return
 
         # 根据格式返回 - 统一使用标准格式 {code, data, message}
-        # data 直接返回内容，不包裹在对象中
+        # data 统一返回包含 title, author, content 的对象
         if format_type == 'content':
-            # 只返回正文内容字符串
-            self._send_success(article['content'], "成功")
+            # 只返回正文内容
+            result = {
+                'title': article['title'],
+                'author': article['author'],
+                'content': article['content']
+            }
+            self._send_success(result, "成功")
         elif format_type == 'text':
-            # 纯文本格式
+            # 纯文本格式 - content 为格式化文本
             text_output = self._format_as_text(article)
-            self._send_success(text_output, "成功")
+            result = {
+                'title': article['title'],
+                'author': article['author'],
+                'content': text_output
+            }
+            self._send_success(result, "成功")
         elif format_type == 'markdown':
-            # Markdown格式
+            # Markdown格式 - content 为markdown
             md_output = self._format_as_markdown(article)
-            self._send_success(md_output, "成功")
+            result = {
+                'title': article['title'],
+                'author': article['author'],
+                'content': md_output
+            }
+            self._send_success(result, "成功")
         else:
-            # 完整JSON格式 - 返回文章对象
-            self._send_success(article, "成功")
+            # 完整JSON格式 - 包含更多字段
+            result = {
+                'title': article['title'],
+                'author': article['author'],
+                'content': article['content'],
+                'publish_time': article.get('publish_time', ''),
+                'url': article.get('url', '')
+            }
+            self._send_success(result, "成功")
 
     def _format_as_text(self, article):
         """格式化为纯文本"""
