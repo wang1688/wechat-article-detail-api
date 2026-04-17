@@ -5,15 +5,15 @@
 提供HTTP接口获取微信公众号文章内容
 
 用法:
-  python3 wechat_article_api.py          # 启动服务 (默认端口 8080)
-  python3 wechat_article_api.py --port 8888  # 指定端口
+  python3 wechat_article_detail_api.py          # 启动服务 (默认端口 8080)
+  python3 wechat_article_detail_api.py --port 8888  # 指定端口
 
 API 端点:
   POST /api/fetch
-  请求体: {"url": "https://mp.weixin.qq.com/s/xxxxx", "format": "text"}
-  返回: {"success": true, "data": {...}}
+  请求体: {"link": "https://mp.weixin.qq.com/s/xxxxx", "format": "content"}
+  返回: {"code": 200, "data": {"title": "...", "author": "...", "content": "..."}, "message": "成功"}
 
-  GET /api/fetch?url=https://mp.weixin.qq.com/s/xxxxx&format=text
+  GET /api/fetch?link=https://mp.weixin.qq.com/s/xxxxx&format=content
 """
 
 import sys
@@ -201,7 +201,7 @@ class APIHandler(BaseHTTPRequestHandler):
         # 获取文章 - 支持 link 或 url 参数
         if path == '/api/fetch':
             url = query_params.get('link', [''])[0] or query_params.get('url', [''])[0]
-            format_type = query_params.get('format', ['text'])[0]  # 默认返回纯文本
+            format_type = query_params.get('format', ['content'])[0]  # 默认返回content格式
             self._handle_fetch(url, format_type)
             return
 
@@ -228,7 +228,7 @@ class APIHandler(BaseHTTPRequestHandler):
         # 获取文章 - 支持 link 或 url 参数
         if path == '/api/fetch':
             url = data.get('link') or data.get('url', '')
-            format_type = data.get('format', 'text')  # 默认返回纯文本
+            format_type = data.get('format', 'content')  # 默认返回content格式
             self._handle_fetch(url, format_type)
             return
 
@@ -239,7 +239,7 @@ class APIHandler(BaseHTTPRequestHandler):
         """处理获取文章请求"""
         # 验证URL
         if not url:
-            self._send_error(400, 'Missing required parameter: url')
+            self._send_error(400, 'Missing required parameter: link or url')
             return
 
         if not url.startswith('https://mp.weixin.qq.com/'):
@@ -255,44 +255,14 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send_error(500, f'Failed to fetch article: {error}')
             return
 
-        # 根据格式返回 - 统一使用标准格式 {code, data, message}
-        # data 统一返回包含 title, author, content 的对象
-        if format_type == 'content':
-            # 只返回正文内容
-            result = {
-                'title': article['title'],
-                'author': article['author'],
-                'content': article['content']
-            }
-            self._send_success(result, "成功")
-        elif format_type == 'text':
-            # 纯文本格式 - content 为格式化文本
-            text_output = self._format_as_text(article)
-            result = {
-                'title': article['title'],
-                'author': article['author'],
-                'content': text_output
-            }
-            self._send_success(result, "成功")
-        elif format_type == 'markdown':
-            # Markdown格式 - content 为markdown
-            md_output = self._format_as_markdown(article)
-            result = {
-                'title': article['title'],
-                'author': article['author'],
-                'content': md_output
-            }
-            self._send_success(result, "成功")
-        else:
-            # 完整JSON格式 - 包含更多字段
-            result = {
-                'title': article['title'],
-                'author': article['author'],
-                'content': article['content'],
-                'publish_time': article.get('publish_time', ''),
-                'url': article.get('url', '')
-            }
-            self._send_success(result, "成功")
+        # 统一返回格式: {code, data: {title, author, content}, message}
+        # content 字段只包含正文，不包含标题作者等信息
+        result = {
+            'title': article['title'],
+            'author': article['author'],
+            'content': article['content']  # 纯正文，不包含标题作者
+        }
+        self._send_success(result, "成功")
 
     def _format_as_text(self, article):
         """格式化为纯文本"""
@@ -339,15 +309,27 @@ def run_server(port=8080):
     print(f"")
     print(f"API 端点:")
     print(f"  GET  /health          - 健康检查")
-    print(f"  GET  /api/fetch?url=<URL>&format=<format>")
+    print(f"  GET  /api/fetch?link=<URL>")
     print(f"  POST /api/fetch       - 获取文章内容")
     print(f"")
-    print(f"参数:")
-    print(f"  url: 微信公众号文章链接 (必填)")
-    print(f"  format: 输出格式 (可选: json, text, markdown, 默认: json)")
+    print(f"请求参数:")
+    print(f"  link: 微信公众号文章链接 (必填)")
+    print(f"")
+    print(f"返回格式:")
+    print(f"  {{")
+    print(f"    'code': 200,")
+    print(f"    'data': {{")
+    print(f"      'title': '文章标题',")
+    print(f"      'author': '公众号名称',")
+    print(f"      'content': '文章正文内容'")
+    print(f"    }},")
+    print(f"    'message': '成功'")
+    print(f"  }}")
     print(f"")
     print(f"示例:")
-    print(f'  curl "http://localhost:{port}/api/fetch?url=https://mp.weixin.qq.com/s/xxxxx&format=text"')
+    print(f'  curl -X POST "http://localhost:{port}/api/fetch" \\')
+    print(f'    -H "Content-Type: application/json" \\')
+    print(f'    -d \'{{"link": "https://mp.weixin.qq.com/s/xxxxx"}}\'')
     print(f"=" * 60)
     print(f"按 Ctrl+C 停止服务")
     print(f"")
@@ -366,13 +348,15 @@ def main():
         epilog="""
 示例:
   # 启动服务 (默认端口 8080)
-  python3 wechat_article_api.py
+  python3 wechat_article_detail_api.py
 
   # 指定端口
-  python3 wechat_article_api.py --port 8888
+  python3 wechat_article_detail_api.py --port 8888
 
   # 测试 API
-  curl "http://localhost:8080/api/fetch?url=https://mp.weixin.qq.com/s/xxxxx&format=text"
+  curl -X POST "http://localhost:8080/api/fetch" \
+    -H "Content-Type: application/json" \
+    -d '{"link": "https://mp.weixin.qq.com/s/xxxxx"}'
         """
     )
     parser.add_argument('--port', type=int, default=8080, help='服务端口 (默认: 8080)')
