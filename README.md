@@ -29,7 +29,6 @@
     1. 安装依赖
           pip3 install urllib3
     2. 启动服务
-      Copy
       python3 wechat_article_detail_api.py --port 8080
 
 
