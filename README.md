@@ -27,7 +27,6 @@
 
 
     1. 安装依赖
-          Copy
           pip3 install urllib3
     2. 启动服务
       Copy
