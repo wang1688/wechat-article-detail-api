@@ -118,9 +118,7 @@ class WeChatArticleExtractor:
         content_match = re.search(r'<div[^>]*id="js_content"[^>]*>(.*?)</div>\s*(?:<script|</div>|<!--)', html, re.DOTALL)
         if content_match:
             content_html = content_match.group(1)
-            # 处理图片
             content_html = re.sub(r'<img[^>]*data-src="([^"]+)"[^>]*>', r'\n[图片: \1]\n', content_html)
-            # 保留段落和换行
             content_html = content_html.replace('</p>', '\n\n').replace('</div>', '\n').replace('</section>', '\n').replace('<br>', '\n').replace('<br/>', '\n')
             content = re.sub(r'<[^>]+>', '', content_html)
             content = content.replace('&nbsp;', ' ').replace('&quot;', '"').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
@@ -164,7 +162,7 @@ class APIHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'))
 
     def _send_success(self, data, message="成功"):
-        """发送成功响应 - 兼容你的Java DTO"""
+        """发送成功响应"""
         self._send_json_response(200, {
             "success": True,
             "data": data,
@@ -172,7 +170,7 @@ class APIHandler(BaseHTTPRequestHandler):
         })
 
     def _send_error(self, status_code, message):
-        """发送错误响应 - 兼容你的Java DTO"""
+        """发送错误响应"""
         self._send_json_response(status_code, {
             "success": False,
             "data": None,
@@ -180,7 +178,6 @@ class APIHandler(BaseHTTPRequestHandler):
         })
 
     def do_OPTIONS(self):
-        """处理CORS预检请求"""
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -188,184 +185,73 @@ class APIHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        """处理GET请求"""
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         query_params = parse_qs(parsed_path.query)
 
-        # 健康检查
         if path == '/health':
-            self._send_json_response(200, {'status': 'ok', 'service': 'wechat-article-api'})
+            self._send_json_response(200, {'status': 'ok'})
             return
 
-        # 获取文章 - 支持 link 或 url 参数
         if path == '/api/fetch':
             url = query_params.get('link', [''])[0] or query_params.get('url', [''])[0]
-            format_type = query_params.get('format', ['content'])[0]
-            self._handle_fetch(url, format_type)
+            self._handle_fetch(url, 'content')
             return
 
-        # 404
         self._send_error(404, 'Not Found')
 
     def do_POST(self):
-        """处理POST请求 —— 已修复，完美支持 JSON"""
-        parsed_path = urlparse(self.path)
-        path = parsed_path.path
-
+        """修复版：完美支持 JSON 请求"""
         try:
-            # 1. 读取请求体长度
             content_length = int(self.headers.get('Content-Length', 0))
-            if content_length <= 0:
-                self._send_error(400, 'Missing required parameter: link or url')
-                return
-
-            # 2. 读取原始 body
             body = self.rfile.read(content_length).decode('utf-8').strip()
-
-            # 3. 解析 JSON
             data = json.loads(body)
 
-            # 4. 从 JSON 中获取 link / url
             url = data.get('link') or data.get('url', '')
-            format_type = data.get('format', 'content')
-
-            # 5. 执行业务
-            self._handle_fetch(url, format_type)
+            self._handle_fetch(url, 'content')
 
         except json.JSONDecodeError:
-            self._send_error(400, 'Invalid JSON format')
+            self._send_error(400, 'Invalid JSON')
         except Exception as e:
             self._send_error(400, f'Error: {str(e)}')
 
     def _handle_fetch(self, url, format_type):
-        """处理获取文章请求"""
-        # 验证URL
         if not url:
             self._send_error(400, 'Missing required parameter: link or url')
             return
 
         if not url.startswith('https://mp.weixin.qq.com/'):
-            self._send_error(400, 'Invalid URL. Only mp.weixin.qq.com URLs are supported')
+            self._send_error(400, 'Invalid URL')
             return
 
-        print(f"Fetching article: {url}")
-
-        # 获取文章
         article, error = WeChatArticleExtractor.fetch_article(url)
-
         if article is None:
-            self._send_error(500, f'Failed to fetch article: {error}')
+            self._send_error(500, error or "Failed")
             return
 
-        # 统一返回格式: {success, data, error}
         result = {
             'title': article['title'],
             'author': article['author'],
             'content': article['content']
         }
-        self._send_success(result, "成功")
-
-    def _format_as_text(self, article):
-        """格式化为纯文本"""
-        lines = [
-            '=' * 60,
-            f"标题：{article['title']}",
-            f"作者：{article['author']}",
-            f"发布时间：{article['publish_time']}",
-            f"原文链接：{article['url']}",
-            '=' * 60,
-            '',
-            article['content'],
-            '',
-            '=' * 60,
-            ]
-        return '\n'.join(lines)
-
-    def _format_as_markdown(self, article):
-        """格式化为Markdown"""
-        lines = [
-            f"# {article['title']}",
-            '',
-            f"**作者：** {article['author']}",
-            '',
-            f"**发布时间：** {article['publish_time']}",
-            '',
-            f"**原文链接：** [{article['url']}]({article['url']})",
-            '',
-            '---',
-            '',
-            article['content'],
-        ]
-        return '\n'.join(lines)
+        self._send_success(result)
 
 
 def run_server(port=8080):
-    """启动API服务器"""
     server_address = ('0.0.0.0', port)
     httpd = HTTPServer(server_address, APIHandler)
-    print(f"=" * 60)
-    print(f"微信公众号文章获取 API 服务")
-    print(f"=" * 60)
+    print("微信公众号文章获取 API 服务已启动！")
     print(f"服务地址: http://0.0.0.0:{port}")
-    print(f"")
-    print(f"API 端点:")
-    print(f"  GET  /health          - 健康检查")
-    print(f"  GET  /api/fetch?link=<URL>")
-    print(f"  POST /api/fetch       - 获取文章内容")
-    print(f"")
-    print(f"请求参数:")
-    print(f"  link: 微信公众号文章链接 (必填)")
-    print(f"")
-    print(f"返回格式:")
-    print(f"  {{")
-    print(f"    'success': true,")
-    print(f"    'data': {{")
-    print(f"      'title': '文章标题',")
-    print(f"      'author': '公众号名称',")
-    print(f"      'content': '文章正文内容'")
-    print(f"    }},")
-    print(f"    'error': null")
-    print(f"  }}")
-    print(f"")
-    print(f"示例:")
-    print(f'  curl -X POST "http://localhost:{port}/api/fetch" \\')
-    print(f'    -H "Content-Type: application/json" \\')
-    print(f'    -d \'{"link": "https://mp.weixin.qq.com/s/xxxxx"}\'')
-    print(f"=" * 60)
-    print(f"按 Ctrl+C 停止服务")
-    print(f"")
-
+    print("POST /api/fetch  支持 application/json")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\n服务已停止")
-        httpd.server_close()
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description='微信公众号文章获取 API 服务',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例:
-  # 启动服务 (默认端口 8080)
-  python3 wechat_article_detail_api.py
-
-  # 指定端口
-  python3 wechat_article_detail_api.py --port 8888
-
-  # 测试 API
-  curl -X POST "http://localhost:8080/api/fetch" \\
-    -H "Content-Type: application/json" \\
-    -d '{"link": "https://mp.weixin.qq.com/s/xxxxx"}'
-        """
-    )
-    parser.add_argument('--port', type=int, default=8080, help='服务端口 (默认: 8080)')
-
-    args = parser.parse_args()
-    run_server(args.port)
 
 
 if __name__ == '__main__':
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=8080)
+    args = parser.parse_args()
+    run_server(args.port)
