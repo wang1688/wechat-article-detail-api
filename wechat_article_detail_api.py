@@ -164,19 +164,19 @@ class APIHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'))
 
     def _send_success(self, data, message="成功"):
-        """发送成功响应 - 标准格式"""
+        """发送成功响应 - 兼容你的Java DTO"""
         self._send_json_response(200, {
-            'code': 200,
-            'data': data,
-            'message': message
+            "success": True,
+            "data": data,
+            "error": None
         })
 
     def _send_error(self, status_code, message):
-        """发送错误响应 - 标准格式"""
+        """发送错误响应 - 兼容你的Java DTO"""
         self._send_json_response(status_code, {
-            'code': status_code,
-            'data': None,
-            'message': message
+            "success": False,
+            "data": None,
+            "error": message
         })
 
     def do_OPTIONS(self):
@@ -201,7 +201,7 @@ class APIHandler(BaseHTTPRequestHandler):
         # 获取文章 - 支持 link 或 url 参数
         if path == '/api/fetch':
             url = query_params.get('link', [''])[0] or query_params.get('url', [''])[0]
-            format_type = query_params.get('format', ['content'])[0]  # 默认返回content格式
+            format_type = query_params.get('format', ['content'])[0]
             self._handle_fetch(url, format_type)
             return
 
@@ -228,7 +228,7 @@ class APIHandler(BaseHTTPRequestHandler):
         # 获取文章 - 支持 link 或 url 参数
         if path == '/api/fetch':
             url = data.get('link') or data.get('url', '')
-            format_type = data.get('format', 'content')  # 默认返回content格式
+            format_type = data.get('format', 'content')
             self._handle_fetch(url, format_type)
             return
 
@@ -255,12 +255,11 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send_error(500, f'Failed to fetch article: {error}')
             return
 
-        # 统一返回格式: {code, data: {title, author, content}, message}
-        # content 字段只包含正文，不包含标题作者等信息
+        # 统一返回格式: {success, data, error}
         result = {
             'title': article['title'],
             'author': article['author'],
-            'content': article['content']  # 纯正文，不包含标题作者
+            'content': article['content']
         }
         self._send_success(result, "成功")
 
@@ -317,13 +316,13 @@ def run_server(port=8080):
     print(f"")
     print(f"返回格式:")
     print(f"  {{")
-    print(f"    'code': 200,")
+    print(f"    'success': true,")
     print(f"    'data': {{")
     print(f"      'title': '文章标题',")
     print(f"      'author': '公众号名称',")
     print(f"      'content': '文章正文内容'")
     print(f"    }},")
-    print(f"    'message': '成功'")
+    print(f"    'error': null")
     print(f"  }}")
     print(f"")
     print(f"示例:")
