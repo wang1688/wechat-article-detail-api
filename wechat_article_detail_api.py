@@ -209,31 +209,34 @@ class APIHandler(BaseHTTPRequestHandler):
         self._send_error(404, 'Not Found')
 
     def do_POST(self):
-        """处理POST请求"""
+        """处理POST请求 —— 已修复，完美支持 JSON"""
         parsed_path = urlparse(self.path)
         path = parsed_path.path
 
-        # 读取请求体
-        content_length = int(self.headers.get('Content-Length', 0))
-        if content_length > 0:
-            body = self.rfile.read(content_length).decode('utf-8')
-            try:
-                data = json.loads(body) if body else {}
-            except json.JSONDecodeError:
-                self._send_error(400, 'Invalid JSON')
+        try:
+            # 1. 读取请求体长度
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length <= 0:
+                self._send_error(400, 'Missing required parameter: link or url')
                 return
-        else:
-            data = {}
 
-        # 获取文章 - 支持 link 或 url 参数
-        if path == '/api/fetch':
+            # 2. 读取原始 body
+            body = self.rfile.read(content_length).decode('utf-8').strip()
+
+            # 3. 解析 JSON
+            data = json.loads(body)
+
+            # 4. 从 JSON 中获取 link / url
             url = data.get('link') or data.get('url', '')
             format_type = data.get('format', 'content')
-            self._handle_fetch(url, format_type)
-            return
 
-        # 404
-        self._send_error(404, 'Not Found')
+            # 5. 执行业务
+            self._handle_fetch(url, format_type)
+
+        except json.JSONDecodeError:
+            self._send_error(400, 'Invalid JSON format')
+        except Exception as e:
+            self._send_error(400, f'Error: {str(e)}')
 
     def _handle_fetch(self, url, format_type):
         """处理获取文章请求"""
@@ -328,7 +331,7 @@ def run_server(port=8080):
     print(f"示例:")
     print(f'  curl -X POST "http://localhost:{port}/api/fetch" \\')
     print(f'    -H "Content-Type: application/json" \\')
-    print(f'    -d \'{{"link": "https://mp.weixin.qq.com/s/xxxxx"}}\'')
+    print(f'    -d \'{"link": "https://mp.weixin.qq.com/s/xxxxx"}\'')
     print(f"=" * 60)
     print(f"按 Ctrl+C 停止服务")
     print(f"")
@@ -353,8 +356,8 @@ def main():
   python3 wechat_article_detail_api.py --port 8888
 
   # 测试 API
-  curl -X POST "http://localhost:8080/api/fetch" \
-    -H "Content-Type: application/json" \
+  curl -X POST "http://localhost:8080/api/fetch" \\
+    -H "Content-Type: application/json" \\
     -d '{"link": "https://mp.weixin.qq.com/s/xxxxx"}'
         """
     )
